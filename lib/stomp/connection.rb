@@ -264,11 +264,12 @@ module Stomp
       begin
         self.begin transaction_id
         
-        if client_ack?(message)
+        if client_ack?(message) || client_individual_ack?(message)
           self.ack(message.headers[:'message-id'], :transaction => transaction_id)
         end
         
         if retry_count <= options[:max_redeliveries]
+          message.headers.delete(:'message-id')
           self.send(message.headers[:destination], message.body, message.headers.merge(:transaction => transaction_id))
         else
           # Poison ack, sending the message to the DLQ
@@ -284,6 +285,11 @@ module Stomp
     def client_ack?(message)
       headers = @subscriptions[message.headers[:destination]]
       !headers.nil? && headers[:ack] == "client"
+    end
+    
+    def client_individual_ack?(message)
+      headers = @subscriptions[message.headers[:destination]]
+      !headers.nil? && headers[:ack] == "client-individual"
     end
 
     # Close this connection
@@ -470,6 +476,9 @@ module Stomp
         headers[:passcode] = @passcode
         _transmit(used_socket, "CONNECT", headers)
         @connection_frame = _receive(used_socket)
+      if @connection_frame == nil
+              raise "Connect failed, server reset connection"
+      end
         @disconnect_receipt = nil
         # replay any subscriptions.
         @subscriptions.each { |k,v| _transmit(used_socket, "SUBSCRIBE", v) }
