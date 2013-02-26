@@ -11,24 +11,61 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-
+$:.unshift(File.dirname(__FILE__) + "/lib")
 require 'rubygems'
-require 'rake/gempackagetask'
+require 'rake'
 require 'rake/testtask'
-require 'rake/rdoctask'
-require 'spec/rake/spectask'
+require 'rspec/core/rake_task'
+require "stomp/version"
 
-# read the contents of the gemspec, eval it, and assign it to 'spec'
-# this lets us maintain all gemspec info in one place.  Nice and DRY.
-spec = eval(IO.read("stomp.gemspec"))
-
-Rake::GemPackageTask.new(spec) do |pkg|
-  pkg.gem_spec = spec
-  pkg.need_tar = true
+begin
+  require "hanna/rdoctask"
+rescue LoadError => e
+  require "rdoc/task"
 end
 
-task :install => [:package] do
-  sh %{sudo gem install pkg/#{GEM}-#{VERSION}}
+begin
+  require 'jeweler'
+  Jeweler::Tasks.new do |gem|
+    gem.name = "stomp"
+    gem.version = Stomp::Version::STRING
+    gem.summary = %Q{Ruby client for the Stomp messaging protocol}
+    gem.description = %Q{Ruby client for the Stomp messaging protocol.  Note that this gem is no longer supported on rubyforge.}
+    gem.email = ["brianm@apache.org", 'marius@stones.com', 'morellon@gmail.com',
+       'allard.guy.m@gmail.com' ]
+    gem.homepage = "https://github.com/stompgem/stomp"
+    gem.authors = ["Brian McCallister", 'Marius Mathiesen', 'Thiago Morello',
+        'Guy M. Allard']
+    gem.add_development_dependency "rspec", '>= 2.3'
+    gem.extra_rdoc_files = [ "README.rdoc", "CHANGELOG.rdoc", "LICENSE",
+      "lib/**/*.rb", "examples/**/*.rb",
+      "test/**/*.rb" ]
+  end
+  Jeweler::GemcutterTasks.new
+rescue LoadError
+  puts "Jeweler not available. Install it with: gem install jeweler"
+end
+
+desc 'Run the specs'
+RSpec::Core::RakeTask.new(:spec) do |t|
+  t.rspec_opts = ['--colour']
+  t.pattern = 'spec/**/*_spec.rb'
+end
+
+desc "Rspec : run all with RCov"
+RSpec::Core::RakeTask.new('spec:rcov') do |t|
+  t.pattern = 'spec/**/*_spec.rb'
+  t.rcov = true
+  t.rcov_opts = ['--exclude', 'gems', '--exclude', 'spec']
+end
+
+Rake::RDocTask.new do |rdoc|
+  rdoc.main = "README.rdoc"
+  rdoc.rdoc_dir = "doc"
+  rdoc.title = "Stomp"
+  rdoc.options += %w[ --line-numbers --inline-source --charset utf-8 ]
+  rdoc.rdoc_files.include("README.rdoc", "CHANGELOG.rdoc", "lib/**/*.rb", "examples/**/*.rb",
+    "test/**/*.rb")
 end
 
 Rake::TestTask.new do |t|
@@ -37,23 +74,7 @@ Rake::TestTask.new do |t|
   t.verbose = true
 end
 
-Rake::RDocTask.new do |rd|
-  rd.main = "README.rdoc"
-  rd.rdoc_files.include("README.rdoc", "lib/**/*.rb")
-  rd.rdoc_dir = 'doc'
-  rd.options = spec.rdoc_options
-end
+task :default => :spec
 
-desc "Rspec : run all with RCov"
-Spec::Rake::SpecTask.new('spec:rcov') do |t|
-  t.spec_files = FileList['spec/**/*.rb']
-  t.rcov = true
-  t.rcov_opts = ['--exclude', 'gems', '--exclude', 'spec']
-end
 
-desc "RSpec : run all"
-Spec::Rake::SpecTask.new('spec') do |t|
-  t.spec_files = FileList['spec/**/*.rb']
-  t.spec_opts = ["--color", "--format", "specdoc"]
-end
 

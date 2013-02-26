@@ -3,28 +3,30 @@
 require 'rubygems'
 require 'stomp'
 #
-# == Example message publisher
+# == Example topic consumer.
 #
-class ExamplePublisher
+class ExampleTopicConsumer
   # Initialize.
   def initialize
   end
   # Run example.
   def run
     client = Stomp::Client.new("failover://(stomp://:@localhost:61613,stomp://:@remotehost:61613)?initialReconnectDelay=5000&randomize=false&useExponentialBackOff=false")
-    message = "ronaldo #{ARGV[0]}"
 
-    for i in (1..50)
-      puts "Sending message"
-      client.publish("/queue/ronaldo", "#{i}: #{message}", {:persistent => true})
-      puts "(#{Time.now})Message sent: #{i}"
-      sleep 0.2
+    puts "Subscribing to /topic/ronaldo"
+
+    client.subscribe("/topic/ronaldo") do |msg|
+      puts msg.to_s
+      puts "----------------"
+    end
+
+    loop do
+      sleep(1)
+      puts "."
     end
   end
 end
 #
-e = ExamplePublisher.new
+e = ExampleTopicConsumer.new
 e.run
-
-
 

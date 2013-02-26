@@ -1,4 +1,6 @@
-require File.dirname(__FILE__) + '/spec_helper'
+# -*- encoding: utf-8 -*-
+
+require 'spec_helper'
 
 shared_examples_for "standard Client" do
 
@@ -47,6 +49,20 @@ shared_examples_for "standard Client" do
       lambda {
         @client.subscribe(@destination) {|msg| received = msg}
       }.should_not raise_error
+    end
+
+    it "should raise RuntimeError on duplicate subscriptions" do
+      lambda {
+        @client.subscribe(@destination)
+        @client.subscribe(@destination)
+      }.should raise_error
+    end
+
+    it "should raise RuntimeError with duplicate id headers" do
+      lambda {
+        @client.subscribe(@destination, {'id' => 'abcdef'})
+        @client.subscribe(@destination, {'id' => 'abcdef'})
+      }.should raise_error
     end
 
   end

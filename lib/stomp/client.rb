@@ -1,4 +1,7 @@
+# -*- encoding: utf-8 -*-
+
 require 'thread'
+require 'digest/sha1'
 
 module Stomp
 
@@ -9,19 +12,63 @@ module Stomp
   # in that thread if you have much message volume.
   class Client
 
-    attr_reader :login, :passcode, :host, :port, :reliable, :parameters
-    alias :obj_send :send
+    public
 
-    # A new Client object can be initialized using two forms:
+    # The login ID used by the client.
+    attr_reader :login
+
+    # The login credentials used by the client.
+    attr_reader :passcode
+
+    # The Stomp host specified by the client.
+    attr_reader :host
+
+    # The Stomp host's listening port.
+    attr_reader :port
+
+    # Is this connection reliable?
+    attr_reader :reliable
+
+    # Parameters Hash, possibly nil for a non-hashed connect.
+    attr_reader :parameters
+
+    # A new Client object can be initialized using three forms:
     #
-    # Standard positional parameters:
+    # Hash (this is the recommended Client initialization method):
+    #
+    #   hash = {
+    #     :hosts => [
+    #       {:login => "login1", :passcode => "passcode1", :host => "localhost", :port => 61616, :ssl => false},
+    #       {:login => "login2", :passcode => "passcode2", :host => "remotehost", :port => 61617, :ssl => false}
+    #     ],
+    #     :reliable => true,
+    #     :initial_reconnect_delay => 0.01,
+    #     :max_reconnect_delay => 30.0,
+    #     :use_exponential_back_off => true,
+    #     :back_off_multiplier => 2,
+    #     :max_reconnect_attempts => 0,
+    #     :randomize => false,
+    #     :connect_timeout => 0,
+    #     :connect_headers => {},
+    #     :parse_timeout => 5,
+    #     :logger => nil,
+    #     :dmh => false,
+    #     :closed_check => true,
+    #     :hbser => false,
+    #     :stompconn => false,
+    #     :usecrlf => false,
+    #   }
+    #
+    #   e.g. c = Stomp::Client.new(hash)
+    #
+    # Positional parameters:
     #   login     (String,  default : '')
     #   passcode  (String,  default : '')
     #   host      (String,  default : 'localhost')
     #   port      (Integer, default : 61613)
     #   reliable  (Boolean, default : false)
     #
-    #   e.g. c = Client.new('login', 'passcode', 'localhost', 61613, true)
+    #   e.g. c = Stomp::Client.new('login', 'passcode', 'localhost', 61613, true)
     #
     # Stomp URL :
     #   A Stomp URL must begin with 'stomp://' and can be in one of the following forms:
@@ -31,47 +78,48 @@ module Stomp
     #   stomp://login:passcode@host:port
     #   stomp://login:passcode@host.domain.tld:port
     #
-    def initialize(login = '', passcode = '', host = 'localhost', port = 61613, reliable = false)
+    #   e.g. c = Stomp::Client.new(urlstring)
+    #
+    def initialize(login = '', passcode = '', host = 'localhost', port = 61613, reliable = false, autoflush = false)
 
       # Parse stomp:// URL's or set params
       if login.is_a?(Hash)
         @parameters = login
-        
+
         first_host = @parameters[:hosts][0]
-        
+
         @login = first_host[:login]
         @passcode = first_host[:passcode]
         @host = first_host[:host]
         @port = first_host[:port] || Connection::default_port(first_host[:ssl])
-        
+
         @reliable = true
-        
-      elsif login =~ /^stomp:\/\/(([\w\.]+):(\w+)@)?([\w\.]+):(\d+)/ # e.g. stomp://login:passcode@host:port or stomp://host:port
+      elsif login =~ /^stomp:\/\/#{url_regex}/ # e.g. stomp://login:passcode@host:port or stomp://host:port
         @login = $2 || ""
         @passcode = $3 || ""
         @host = $4
         @port = $5.to_i
         @reliable = false
-      elsif login =~ /^failover:(\/\/)?\(stomp(\+ssl)?:\/\/(([\w\.]*):(\w*)@)?([\w\.]+):(\d+)(,stomp(\+ssl)?:\/\/(([\w\.]*):(\w*)@)?([\w\.]+):(\d+)\))+(\?(.*))?$/ # e.g. failover://(stomp://login1:passcode1@localhost:61616,stomp://login2:passcode2@remotehost:61617)?option1=param
-
+      elsif login =~ /^failover:(\/\/)?\(stomp(\+ssl)?:\/\/#{url_regex}(,stomp(\+ssl)?:\/\/#{url_regex}\))+(\?(.*))?$/ 
+        # e.g. failover://(stomp://login1:passcode1@localhost:61616,stomp://login2:passcode2@remotehost:61617)?option1=param
         first_host = {}
         first_host[:ssl] = !$2.nil?
         @login = first_host[:login] = $4 || ""
         @passcode = first_host[:passcode] = $5 || ""
         @host = first_host[:host] = $6
         @port = first_host[:port] = $7.to_i || Connection::default_port(first_host[:ssl])
-        
+
         options = $16 || ""
         parts = options.split(/&|=/)
         options = Hash[*parts]
-        
+
         hosts = [first_host] + parse_hosts(login)
-        
+
         @parameters = {}
         @parameters[:hosts] = hosts
-        
+
         @parameters.merge! filter_options(options)
-                
+
         @reliable = true
       else
         @login = login
@@ -81,53 +129,54 @@ module Stomp
         @reliable = reliable
       end
 
-      check_arguments!
+      check_arguments!()
 
-      @id_mutex = Mutex.new
+      @id_mutex = Mutex.new()
       @ids = 1
 
       if @parameters
         @connection = Connection.new(@parameters)
       else
         @connection = Connection.new(@login, @passcode, @host, @port, @reliable)
+        @connection.autoflush = autoflush
       end
-      
-      start_listeners
+
+      start_listeners()
 
     end
-    
-    # Syntactic sugar for 'Client.new' See 'initialize' for usage.
+
+    # open is syntactic sugar for 'Client.new', see 'initialize' for usage.
     def self.open(login = '', passcode = '', host = 'localhost', port = 61613, reliable = false)
       Client.new(login, passcode, host, port, reliable)
     end
 
-    # Join the listener thread for this client,
-    # generally used to wait for a quit signal
-    def join
-      @listener_thread.join
+    # join the listener thread for this client,
+    # generally used to wait for a quit signal.
+    def join(limit = nil)
+      @listener_thread.join(limit)
     end
 
-    # Begin a transaction by name
+    # Begin starts work in a a transaction by name.
     def begin(name, headers = {})
       @connection.begin(name, headers)
     end
 
-    # Abort a transaction by name
+    # Abort aborts work in a transaction by name.
     def abort(name, headers = {})
       @connection.abort(name, headers)
 
-      # lets replay any ack'd messages in this transaction
+      # replay any ack'd messages in this transaction
       replay_list = @replay_messages_by_txn[name]
       if replay_list
         replay_list.each do |message|
-          if listener = @listeners[message.headers['destination']]
+          if listener = find_listener(message)
             listener.call(message)
           end
         end
       end
     end
 
-    # Commit a transaction by name
+    # Commit commits work in a transaction by name.
     def commit(name, headers = {})
       txn_id = headers[:transaction]
       @replay_messages_by_txn.delete(txn_id)
@@ -135,25 +184,31 @@ module Stomp
     end
 
     # Subscribe to a destination, must be passed a block
-    # which will be used as a callback listener
-    #
-    # Accepts a transaction header ( :transaction => 'some_transaction_id' )
+    # which will be used as a callback listener.
+    # Accepts a transaction header ( :transaction => 'some_transaction_id' ).
     def subscribe(destination, headers = {})
       raise "No listener given" unless block_given?
-      @listeners[destination] = lambda {|msg| yield msg}
+      # use subscription id to correlate messages to subscription. As described in
+      # the SUBSCRIPTION section of the protocol: http://stomp.github.com/.
+      # If no subscription id is provided, generate one.
+      set_subscription_id_if_missing(destination, headers)
+      if @listeners[headers[:id]]
+        raise "attempting to subscribe to a queue with a previous subscription"
+      end
+      @listeners[headers[:id]] = lambda {|msg| yield msg}
       @connection.subscribe(destination, headers)
     end
 
-    # Unsubecribe from a channel
+    # Unsubscribe from a subscription by name.
     def unsubscribe(name, headers = {})
+      set_subscription_id_if_missing(name, headers)
       @connection.unsubscribe(name, headers)
-      @listeners[name] = nil
+      @listeners[headers[:id]] = nil
     end
 
     # Acknowledge a message, used when a subscription has specified
-    # client acknowledgement ( connection.subscribe "/queue/a", :ack => 'client'g
-    #
-    # Accepts a transaction header ( :transaction => 'some_transaction_id' )
+    # client acknowledgement ( connection.subscribe("/queue/a",{:ack => 'client'}).
+    # Accepts a transaction header ( :transaction => 'some_transaction_id' ).
     def acknowledge(message, headers = {})
       txn_id = headers[:transaction]
       if txn_id
@@ -168,131 +223,128 @@ module Stomp
       if block_given?
         headers['receipt'] = register_receipt_listener lambda {|r| yield r}
       end
-      @connection.ack message.headers['message-id'], headers
+      if protocol() == Stomp::SPL_12
+        @connection.ack(message.headers['ack'], headers)
+      else
+        @connection.ack(message.headers['message-id'], headers)
+      end
     end
-    
-    # Unreceive a message, sending it back to its queue or to the DLQ
-    # client acknowledgement ( connection.subscribe "/queue/a", :ack => 'client'g
-    #
-    def unreceive(message)
-      @connection.unreceive message
+
+    # Stomp 1.1+ NACK.
+    def nack(message_id, headers = {})
+      @connection.nack(message_id, headers)
     end
-    # Send message to destination
-    #
+
+    # Unreceive a message, sending it back to its queue or to the DLQ.
+    def unreceive(message, options = {})
+      @connection.unreceive(message, options)
+    end
+
+    # Publishes message to destination.
     # If a block is given a receipt will be requested and passed to the
-    # block on receipt
-    #
-    # Accepts a transaction header ( :transaction => 'some_transaction_id' )
-    def send(destination, message, headers = {})
+    # block on receipt.
+    # Accepts a transaction header ( :transaction => 'some_transaction_id' ).
+    def publish(destination, message, headers = {})
       if block_given?
         headers['receipt'] = register_receipt_listener lambda {|r| yield r}
       end
-      @connection.send(destination, message, headers)
+      @connection.publish(destination, message, headers)
     end
-    
-    def connection_frame
+
+    # Return the broker's CONNECTED frame to the client.  Misnamed.
+    def connection_frame()
       @connection.connection_frame
     end
 
-    def disconnect_receipt
+    # Return any RECEIPT frame received by DISCONNECT.
+    def disconnect_receipt()
       @connection.disconnect_receipt
     end
 
-    # Is this client open?
+    # open? tests if this client connection is open.
     def open?
-      @connection.open?
+      @connection.open?()
     end
 
-    # Is this client closed?
-    def closed?
-      @connection.closed?
+    # close? tests if this client connection is closed.
+    def closed?()
+      @connection.closed?()
     end
 
-    # Close out resources in use by this client
-    def close headers={}
+    # close frees resources in use by this client.  The listener thread is
+    # terminated, and disconnect on the connection is called.
+    def close(headers={})
       @listener_thread.exit
-      @connection.disconnect headers
+      @connection.disconnect(headers)
     end
 
-    # Check if the thread was created and isn't dead
-    def running
+    # running checks if the thread was created and is not dead.
+    def running()
       @listener_thread && !!@listener_thread.status
     end
 
-    private
+    # set_logger identifies a new callback logger.
+    def set_logger(logger)
+      @connection.set_logger(logger)
+    end
 
-      def register_receipt_listener(listener)
-        id = -1
-        @id_mutex.synchronize do
-          id = @ids.to_s
-          @ids = @ids.succ
-        end
-        @receipt_listeners[id] = listener
-        id
-      end
-      
-      def parse_hosts(url)
-        hosts = []
-        
-        host_match = /stomp(\+ssl)?:\/\/(([\w\.]*):(\w*)@)?([\w\.]+):(\d+)\)/
-        url.scan(host_match).each do |match|
-          host = {}
-          host[:ssl] = !match[0].nil?
-          host[:login] =  match[2] || ""
-          host[:passcode] = match[3] || ""
-          host[:host] = match[4]
-          host[:port] = match[5].to_i
-          
-          hosts << host
-        end
-        
-        hosts
-      end
-      
-      def check_arguments!
-        raise ArgumentError if @host.nil? || @host.empty?
-        raise ArgumentError if @port.nil? || @port == '' || @port < 1 || @port > 65535
-        raise ArgumentError unless @reliable.is_a?(TrueClass) || @reliable.is_a?(FalseClass)
-      end
-      
-      def filter_options(options)
-        new_options = {}
-        new_options[:initial_reconnect_delay] = (options["initialReconnectDelay"] || 10).to_f / 1000 # In ms
-        new_options[:max_reconnect_delay] = (options["maxReconnectDelay"] || 30000 ).to_f / 1000 # In ms
-        new_options[:use_exponential_back_off] = !(options["useExponentialBackOff"] == "false") # Default: true
-        new_options[:back_off_multiplier] = (options["backOffMultiplier"] || 2 ).to_i
-        new_options[:max_reconnect_attempts] = (options["maxReconnectAttempts"] || 0 ).to_i
-        new_options[:randomize] = options["randomize"] == "true" # Default: false
-        new_options[:backup] = false # Not implemented yet: I'm using a master X slave solution
-        new_options[:timeout] = -1 # Not implemented yet: a "timeout(5) do ... end" would do the trick, feel free
-        
-        new_options
-      end
-      
-      def start_listeners
-        @listeners = {}
-        @receipt_listeners = {}
-        @replay_messages_by_txn = {}
+    # protocol returns the current client's protocol level.
+    def protocol()
+      @connection.protocol()
+    end
 
-        @listener_thread = Thread.start do
-          while true
-            message = @connection.poll
-            case
-            when message.nil?
-              sleep 0.1
-            when message.command == 'MESSAGE'
-              if listener = @listeners[message.headers['destination']]
-                listener.call(message)
-              end
-            when message.command == 'RECEIPT'
-              if listener = @receipt_listeners[message.headers['receipt-id']]
-                listener.call(message)
-              end
-            end
-          end
-        end
-        
-      end
-  end
-end
+    # valid_utf8? validates any given string for UTF8 compliance.
+    def valid_utf8?(s)
+      @connection.valid_utf8?(s)
+    end
+
+    # sha1 returns a SHA1 sum of a given string.
+    def sha1(data)
+      @connection.sha1(data)
+    end
+
+    # uuid returns a type 4 UUID.
+    def uuid()
+      @connection.uuid()
+    end
+
+    # hbsend_interval returns the connection's heartbeat send interval.
+    def hbsend_interval()
+      @connection.hbsend_interval()
+    end
+
+    # hbrecv_interval returns the connection's heartbeat receive interval.
+    def hbrecv_interval()
+      @connection.hbrecv_interval()
+    end
+
+    # hbsend_count returns the current connection's heartbeat send count.
+    def hbsend_count()
+      @connection.hbsend_count()
+    end
+
+    # hbrecv_count returns the current connection's heartbeat receive count.
+    def hbrecv_count()
+      @connection.hbrecv_count()
+    end
+
+    # Poll for asynchronous messages issued by broker.
+    # Return nil of no message available, else the message
+    def poll()
+      @connection.poll()
+    end
+
+    # autoflush= sets the current connection's autoflush setting.
+    def autoflush=(af)
+      @connection.autoflush = af
+    end
+
+    # autoflush returns the current connection's autoflush setting.
+    def autoflush()
+      @connection.autoflush()
+    end
+
+  end # Class
+
+end # Module
 

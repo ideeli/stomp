@@ -2,10 +2,11 @@
 
 require 'rubygems'
 require 'stomp'
+
 #
-# == Example message publisher
+# == Example topic publisher.
 #
-class ExamplePublisher
+class ExampleTopicPublisher
   # Initialize.
   def initialize
   end
@@ -16,15 +17,13 @@ class ExamplePublisher
 
     for i in (1..50)
       puts "Sending message"
-      client.publish("/queue/ronaldo", "#{i}: #{message}", {:persistent => true})
+      client.publish("/topic/ronaldo", "#{i}: #{message}")
       puts "(#{Time.now})Message sent: #{i}"
       sleep 0.2
     end
   end
 end
 #
-e = ExamplePublisher.new
+e = ExampleTopicPublisher.new
 e.run
-
-
 

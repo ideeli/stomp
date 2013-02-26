@@ -1,10 +1,13 @@
-require File.dirname(__FILE__) + '/spec_helper'
-require File.dirname(__FILE__) + '/client_shared_examples'
+# -*- encoding: utf-8 -*-
+
+require 'spec_helper'
+require 'client_shared_examples'
+
 
 describe Stomp::Client do
 
   before(:each) do
-    @mock_connection = mock('connection')
+    @mock_connection = mock('connection', :autoflush= => true)
     Stomp::Connection.stub!(:new).and_return(@mock_connection)
   end
 
@@ -28,6 +31,23 @@ describe Stomp::Client do
 
     it_should_behave_like "standard Client"
 
+  end
+
+  describe "(autoflush)" do
+    it "should delegate to the connection for accessing the autoflush property" do
+      @mock_connection.should_receive(:autoflush)
+      Stomp::Client.new.autoflush
+    end
+
+    it "should delegate to the connection for setting the autoflush property" do
+      @mock_connection.should_receive(:autoflush=).with(true)
+      Stomp::Client.new.autoflush = true
+    end
+
+    it "should set the autoflush property on the connection when passing in autoflush as a parameter to the Stomp::Client" do
+      @mock_connection.should_receive(:autoflush=).with(true)
+      Stomp::Client.new("login", "password", 'localhost', 61613, false, true)
+    end
   end
 
   describe "(created with invalid params)" do
@@ -113,16 +133,52 @@ describe Stomp::Client do
 
   end
 
-  describe "(created with authenticating stomp:// URL and non-TLD host)" do
+  describe "(created with non-authenticating stomp:// URL and a host with a '-')" do
 
     before(:each) do
-      @client = Stomp::Client.new('stomp://testlogin:testpasscode@foobar:12345')
+      @client = Stomp::Client.new('stomp://foo-bar:12345')
     end
 
     it "should properly parse the URL provided" do
-      @client.login.should eql('testlogin')
+      @client.login.should eql('')
+      @client.passcode.should eql('')
+      @client.host.should eql('foo-bar')
+      @client.port.should eql(12345)
+      @client.reliable.should be_false
+    end
+
+    it_should_behave_like "standard Client"
+
+  end
+  
+  describe "(created with authenticating stomp:// URL and non-TLD host)" do
+
+    before(:each) do
+      @client = Stomp::Client.new('stomp://test-login:testpasscode@foobar:12345')
+    end
+
+    it "should properly parse the URL provided" do
+      @client.login.should eql('test-login')
       @client.passcode.should eql('testpasscode')
       @client.host.should eql('foobar')
+      @client.port.should eql(12345)
+      @client.reliable.should be_false
+    end
+
+    it_should_behave_like "standard Client"
+
+  end
+
+  describe "(created with authenticating stomp:// URL and a host with a '-')" do
+
+    before(:each) do
+      @client = Stomp::Client.new('stomp://test-login:testpasscode@foo-bar:12345')
+    end
+
+    it "should properly parse the URL provided" do
+      @client.login.should eql('test-login')
+      @client.passcode.should eql('testpasscode')
+      @client.host.should eql('foo-bar')
       @client.port.should eql(12345)
       @client.reliable.should be_false
     end
@@ -180,8 +236,7 @@ describe Stomp::Client do
         :back_off_multiplier => 2,
         :max_reconnect_attempts => 0,
         :randomize => false,
-        :backup => false,
-        :timeout => -1
+        :connect_timeout => 0
       }
     end
     it "should properly parse a URL with failover://" do
@@ -255,8 +310,7 @@ describe Stomp::Client do
         :back_off_multiplier => 3,
         :max_reconnect_attempts => 4,
         :randomize => true,
-        :backup => false,
-        :timeout => -1
+        :connect_timeout => 0
       }
       
       @parameters[:hosts] = [

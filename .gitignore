@@ -1,3 +1,7 @@
 pkg/*
 doc/*
 coverage/*
+*.gem
+*~
+temp*
+
