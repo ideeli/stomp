@@ -110,7 +110,7 @@ module Stomp
       # The transmit may fail so we may need to retry.
       while TRUE
         begin
-          used_socket = socket
+          used_socket = socket()
           _transmit(used_socket, command, headers, body)
           return
         rescue Stomp::Error::MaxReconnectAttempts => e
@@ -120,7 +120,7 @@ module Stomp
           raise unless @reliable
           errstr = "transmit to #{@host} failed: #{$!}\n"
           if @logger && @logger.respond_to?(:on_miscerr)
-            @logger.on_miscerr(log_params, errstr)
+            @logger.on_miscerr(log_params, "es_trans: " + errstr)
           else
             $stderr.print errstr
           end

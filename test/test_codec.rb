@@ -1,8 +1,11 @@
 # -*- encoding: utf-8 -*-
 
-$:.unshift(File.dirname(__FILE__))
-
-require 'test_helper'
+if Kernel.respond_to?(:require_relative)
+  require_relative("test_helper")
+else
+  $:.unshift(File.dirname(__FILE__))
+  require 'test_helper'
+end
 
 =begin
 
@@ -37,10 +40,10 @@ class TestCodec < Test::Unit::TestCase
     #
     test_data.each do |s|
       #
-      s_decoded = Stomp::HeaderCodec::decode(s)
-      assert_equal s, s_decoded, "Sanity check decode: #{s} | #{s_decoded}"
-      s_reencoded = Stomp::HeaderCodec::encode(s_decoded)
-      assert_equal s_decoded, s_reencoded, "Sanity check reencode: #{s_decoded} | #{s_reencoded}"
+      s_decoded_a = Stomp::HeaderCodec::decode(s)
+      assert_equal s, s_decoded_a, "Sanity check decode: #{s} | #{s_decoded_a}"
+      s_reencoded = Stomp::HeaderCodec::encode(s_decoded_a)
+      assert_equal s_decoded_a, s_reencoded, "Sanity check reencode: #{s_decoded_a} | #{s_reencoded}"
       #
     end
   end
@@ -48,7 +51,8 @@ class TestCodec < Test::Unit::TestCase
   # Test the basic encoding / decoding requirements.
   def test_1010_basic_encode_decode
     test_data = [
-    	[ "\\\\", "\\" ],
+    	[ "\\\\\\\\", "\\\\" ], # [encoded, decoded]
+    	[ "\\\\", "\\" ], # [encoded, decoded]
     	["\\n", "\n"],
     	["\\r", "\r"],
 	    ["\\c", ":"],
@@ -63,31 +67,51 @@ class TestCodec < Test::Unit::TestCase
       ]
     #
     test_data.each do |s|
+      encoded_orig = s[0]
+      decoded_orig = s[1]
+
+      # Part 1
+      s_decoded_a = Stomp::HeaderCodec::decode(encoded_orig)
+      assert_equal decoded_orig, s_decoded_a, "Sanity check decode: #{decoded_orig} | #{s_decoded_a}"
       #
-      s_decoded = Stomp::HeaderCodec::encode(s[0])
-      assert_equal s[1], s_decoded, "Sanity check encode: #{s[1]} | #{s_decoded}"
+      s_encoded_a = Stomp::HeaderCodec::encode(decoded_orig)
+      assert_equal encoded_orig, s_encoded_a, "Sanity check encode: #{encoded_orig} | #{s_encoded_a}"
+
+      # Part 2
+      s_decoded_b = Stomp::HeaderCodec::decode(s_encoded_a)
+      assert_equal decoded_orig, s_decoded_b, "Sanity check 2 decode: #{decoded_orig} | #{s_decoded_b}"
       #
-      s_encoded = Stomp::HeaderCodec::decode(s[1])
-      assert_equal s[0], s_encoded, "Sanity check decode: #{s[0]} | #{s_encoded}"
+      s_encoded_b = Stomp::HeaderCodec::encode(s_decoded_a)
+      assert_equal encoded_orig, s_encoded_b, "Sanity check  2 encode: #{encoded_orig} | #{s_encoded_b}"
     end
   end
 
   # Test more complex strings with the codec.
   def test_1020_fancier
     test_data = [
-    	[ "a\\\\b", "a\\b" ],
+    	[ "a\\\\b", "a\\b" ],  # [encoded, decoded]
       [ "\\\\\\n\\c", "\\\n:" ],
       [ "\\\\\\r\\c", "\\\r:" ],
       [ "\\rr\\\\\\n\\c", "\rr\\\n:" ],
       ]
     #
     test_data.each do |s|
+      encoded_orig = s[0]
+      decoded_orig = s[1]
+
+      # Part 1
+      s_decoded_a = Stomp::HeaderCodec::decode(encoded_orig)
+      assert_equal decoded_orig, s_decoded_a, "Sanity check decode: #{decoded_orig} | #{s_decoded_a}"
       #
-      s_decoded = Stomp::HeaderCodec::encode(s[0])
-      assert_equal s[1], s_decoded, "Sanity check encode: #{s[1]} | #{s_decoded}"
+      s_encoded_a = Stomp::HeaderCodec::encode(decoded_orig)
+      assert_equal encoded_orig, s_encoded_a, "Sanity check encode: #{encoded_orig} | #{s_encoded_a}"
+
+      # Part 2
+      s_decoded_b = Stomp::HeaderCodec::decode(s_encoded_a)
+      assert_equal decoded_orig, s_decoded_b, "Sanity check 2 decode: #{decoded_orig} | #{s_decoded_b}"
       #
-      s_encoded = Stomp::HeaderCodec::decode(s[1])
-      assert_equal s[0], s_encoded, "Sanity check decode: #{s[0]} | #{s_encoded}"
+      s_encoded_b = Stomp::HeaderCodec::encode(s_decoded_a)
+      assert_equal encoded_orig, s_encoded_b, "Sanity check  2 encode: #{encoded_orig} | #{s_encoded_b}"
     end
   end
 

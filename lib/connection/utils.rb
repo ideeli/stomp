@@ -83,8 +83,11 @@ module Stomp
 
     # _post_connect handles low level logic just after a physical connect.
     def _post_connect()
-      return unless (@connect_headers[:"accept-version"] && @connect_headers[:host])
-      return if @connection_frame.command == Stomp::CMD_ERROR
+      return unless (@connect_headers[:"accept-version"] && @connect_headers[:host]) # 1.0
+      if @connection_frame.command == Stomp::CMD_ERROR
+        @connection_frame.headers = _decodeHeaders(@connection_frame.headers)
+        return
+      end
       # We are CONNECTed
       cfh = @connection_frame.headers.symbolize_keys
       @protocol = cfh[:version]
@@ -109,7 +112,7 @@ module Stomp
         while used_socket.nil? || !@failure.nil?
           @failure = nil
           begin
-            used_socket = open_socket()
+            used_socket = open_socket() # sets @closed = false if OK
             # Open is complete
             connect(used_socket)
             if @logger && @logger.respond_to?(:on_connected)
@@ -215,14 +218,14 @@ module Stomp
       # The receive may fail so we may need to retry.
       while TRUE
         begin
-          used_socket = socket
+          used_socket = socket()
           return _receive(used_socket)
         rescue
           @failure = $!
           raise unless @reliable
           errstr = "receive failed: #{$!}"
           if @logger && @logger.respond_to?(:on_miscerr)
-            @logger.on_miscerr(log_params, errstr)
+            @logger.on_miscerr(log_params, "es_oldrecv: " + errstr)
           else
             $stderr.print errstr
           end

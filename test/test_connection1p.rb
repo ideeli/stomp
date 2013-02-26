@@ -1,12 +1,15 @@
 # -*- encoding: utf-8 -*-
 
-$:.unshift(File.dirname(__FILE__))
-
-require 'test_helper'
+if Kernel.respond_to?(:require_relative)
+  require_relative("test_helper")
+else
+  $:.unshift(File.dirname(__FILE__))
+  require 'test_helper'
+end
 
 =begin
 
-  Main class for testing Stomp::Connection instances, protocol level 1.1+.
+  Main class for testing Stomp::Connection instances, protocol levels 1.1+.
 
 =end
 class TestConnection1P < Test::Unit::TestCase
@@ -27,6 +30,7 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test missing connect headers.
   def test_conn_1p_0010
+    @conn.disconnect
     #
     cha = {:host => "localhost"}
     assert_raise Stomp::Error::ProtocolErrorConnect do
@@ -41,6 +45,7 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test requesting only a 1.0 connection.
   def test_conn_1p_0020
+    @conn.disconnect
     #
     cha = {:host => "localhost", "accept-version" => "1.0"}
     cha[:host] = "/" if ENV['STOMP_RABBIT']
@@ -52,38 +57,38 @@ class TestConnection1P < Test::Unit::TestCase
     assert_equal conn.protocol, Stomp::SPL_10
   end
 
-  # Test requesting only a 1.1 connection.
+  # Test requesting only a 1.1+ connection.
   def test_conn_1p_0030
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()
     conn = nil
     assert_nothing_raised do
       conn = Stomp::Connection.open(user, passcode, host, port, false, 5, cha)
       conn.disconnect
     end
-    assert_equal conn.protocol, Stomp::SPL_11
+    assert conn.protocol >= Stomp::SPL_11
   end
 
   # Test basic request for no heartbeats.
   def test_conn_1p_0040
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "0,0" # No heartbeats
     conn = nil
     assert_nothing_raised do
       conn = Stomp::Connection.open(user, passcode, host, port, false, 5, cha)
       conn.disconnect
     end
-    assert_equal conn.protocol, Stomp::SPL_11
+    assert conn.protocol >= Stomp::SPL_11
   end
 
   # Test malformed heartbeat header.
   def test_conn_1p_0050
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "10,10,20" # Bad header Heartbeats
     conn = nil
     assert_raise Stomp::Error::InvalidHeartBeatHeaderError do
@@ -93,9 +98,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test malformed heartbeat header.
   def test_conn_11h_0060
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()
     cha["heart-beat"] = "a,10" # Bad header Heartbeats
     conn = nil
     assert_raise Stomp::Error::InvalidHeartBeatHeaderError do
@@ -105,9 +110,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test a valid heartbeat header.
   def test_conn_1p_0070
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "500,1000" # Valid heart beat headers
     conn = nil
     assert_nothing_raised do
@@ -120,9 +125,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test only sending heartbeats.
   def test_conn_1p_0080
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "10000,0" # Valid heart beat headers, send only
     conn = nil
     logger = Tlogger.new
@@ -138,9 +143,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test only receiving heartbeats.
   def test_conn_1p_0090
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "0,6000" # Valid heart beat headers, receive only
     conn = nil
     logger = Tlogger.new
@@ -157,9 +162,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test sending and receiving heartbeats.
   def test_conn_1p_0100
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "5000,10000" # Valid heart beat headers, send and receive
     conn = nil
     logger = Tlogger.new
@@ -176,9 +181,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test valid UTF8 data.
   def test_conn_1p_0110
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "0,0" # No heartbeats
     conn = nil
     conn = Stomp::Connection.open(user, passcode, host, port, false, 5, cha)
@@ -207,9 +212,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test invalid UTF8 data.
   def test_conn_1p_0120
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "0,0" # No heartbeats
     conn = nil
     conn = Stomp::Connection.open(user, passcode, host, port, false, 5, cha)
@@ -279,9 +284,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test heartbeats with send and receive.
   def test_conn_1p_0130
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "10000,6000" # Valid heart beat headers, send and receive
     conn = nil
     logger = Tlogger.new
@@ -298,9 +303,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test heartbeats with send and receive.
   def test_conn_1p_0135
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "10000,1000" # Valid heart beat headers, send and receive
     conn = nil
     logger = Tlogger.new
@@ -317,9 +322,9 @@ class TestConnection1P < Test::Unit::TestCase
 
   # Test heartbeats with send and receive.
   def test_conn_1p_0140
+    @conn.disconnect
     #
-    cha = {:host => "localhost", "accept-version" => "1.1"}
-    cha[:host] = "/" if ENV['STOMP_RABBIT']
+    cha = get_conn_headers()    
     cha["heart-beat"] = "1000,10000" # Valid heart beat headers, send and receive
     conn = nil
     logger = Tlogger.new
@@ -333,6 +338,36 @@ class TestConnection1P < Test::Unit::TestCase
     end
     hb_asserts_both(conn)
   end if ENV['STOMP_HB11LONG']
+
+  # Test very encoding / decoding of headers
+  def test_conn_1p_0200
+    @conn.disconnect
+    #
+    cha = get_conn_headers()    
+    conn = Stomp::Connection.open(user, passcode, host, port, false, 5, cha)
+    msg = "payload: #{Time.now.to_f}"
+    dest = make_destination
+    shdrs = { "ab:cd" => "ef:gh", "a\nb" => "c\nd", "x\\y" => "z\\s" }
+    if conn.protocol >= Stomp::SPL_12
+      shdrs["bb\rcc"] = "dd\ree"
+    end
+    assert_nothing_raised {
+      conn.publish dest, msg, shdrs
+    }
+    #
+    sid = conn.uuid()
+    conn.subscribe dest, :id => sid
+    #
+    received = conn.receive
+    assert_equal msg, received.body
+    #
+    shdrs.each_pair {|k,v|
+      assert received.headers.has_key?(k), "Key not found: #{k}"
+      assert received.headers.has_value?(v), "Value not found: #{v}"
+      assert received.headers[k] == v, "Mismatch: #{k},#{v}"
+    }
+    conn.disconnect
+  end unless ENV['STOMP_RABBIT']
 
 private
 
